@@ -1,0 +1,95 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Logs
+*.log
+*.log.*
+
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Vector Database
+data/qdrant_data/
+*.qdrant
+
+# Data files (large files, consider using Git LFS)
+# 数据文件通常太大，不推送到 GitHub
+data/database/
+data/llm_summaries.json
+data/*.json
+data/*.db
+data/*.sqlite
+
+# Model cache
+.cache/
+models/
+*.pth
+*.pt
+*.h5
+*.ckpt
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Environment variables
+.env
+.env.local
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# Compressed files (if too large)
+*.zip
+*.tar.gz
+*.rar
+
+# HTML files (if too many)
+# database/html_files/
+
