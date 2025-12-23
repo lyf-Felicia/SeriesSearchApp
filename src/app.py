@@ -21,7 +21,7 @@ import zipfile
 def download_data_from_releases():
     # 从 secrets 读取配置，如果没有则使用默认值
     repo = st.secrets.get("GITHUB_REPO", "lyf-Felicia/SeriesSearchApp")
-    tag = st.secrets.get("RELEASE_TAG", "v1.0.0")
+    tag = st.secrets.get("RELEASE_TAG", "1.0")
     # 使用正确的 GitHub Release URL 格式
     release_base = f"https://github.com/{repo}/releases/download/{tag}"
     
@@ -90,6 +90,33 @@ def download_data_from_releases():
     if download_failed:
         st.error("⚠️ 数据文件下载失败，应用无法继续运行。请检查 GitHub Release 配置。")
         st.stop()
+    
+    # 验证所有必需的文件是否存在且可读
+    required_files = {
+        "数据库文件": "data/database/final.db",
+        "LLM摘要文件": "data/llm_summaries.json",
+        "Qdrant数据目录": "data/qdrant_data"
+    }
+    
+    missing_files = []
+    for name, path in required_files.items():
+        if os.path.isdir(path):
+            # 对于目录，检查是否有内容
+            if not os.listdir(path):
+                missing_files.append(f"{name} ({path}) - 目录为空")
+            elif path == "data/qdrant_data" and not os.path.exists(os.path.join(path, "meta.json")):
+                missing_files.append(f"{name} ({path}) - 缺少 meta.json 文件")
+        elif not os.path.exists(path):
+            missing_files.append(f"{name} ({path}) - 文件不存在")
+        elif os.path.getsize(path) < 100:
+            missing_files.append(f"{name} ({path}) - 文件大小异常（可能损坏）")
+    
+    if missing_files:
+        st.error("⚠️ 数据文件验证失败：\n" + "\n".join(f"- {f}" for f in missing_files))
+        st.stop()
+    
+    # 等待一小段时间确保文件系统完全同步
+    time.sleep(0.5)
 
 download_data_from_releases()
 
@@ -251,22 +278,56 @@ def fetch_poster_url(query_title):
 # ==============================================================================
 class SmartTVRetriever:
     def __init__(self):
+        # 验证文件路径
+        if not os.path.exists(DB_PATH):
+            raise FileNotFoundError(f"数据库文件不存在: {DB_PATH}\n请确保数据文件已正确下载。")
+        
+        if not os.path.exists(QDRANT_PATH):
+            raise FileNotFoundError(f"Qdrant 数据目录不存在: {QDRANT_PATH}\n请确保数据文件已正确下载并解压。")
+        
+        if not os.path.exists("data/qdrant_data/meta.json"):
+            raise FileNotFoundError(f"Qdrant 数据不完整: {QDRANT_PATH}/meta.json 不存在\n请确保 qdrant_data.zip 已正确解压。")
+        
         try:
             print(f"正在加载本地 Embedding 模型: {EMBEDDING_MODEL_PATH} ...")
             self.embed_model = HuggingFaceEmbedding(model_name=EMBEDDING_MODEL_PATH, trust_remote_code=True)
             Settings.embed_model = self.embed_model
         except Exception as e:
             st.error(f"Embedding 模型加载失败: {e}")
+            raise
 
-        self.client = QdrantClient(path=QDRANT_PATH)
-        self.rich_index = self._load_index("tv_series_rich_text")
-        self.basic_index = self._load_index("tv_series_basic")
+        try:
+            print(f"正在连接 Qdrant 向量数据库: {QDRANT_PATH} ...")
+            self.client = QdrantClient(path=QDRANT_PATH)
+            self.rich_index = self._load_index("tv_series_rich_text")
+            self.basic_index = self._load_index("tv_series_basic")
+        except Exception as e:
+            st.error(f"Qdrant 向量数据库加载失败: {e}\n路径: {QDRANT_PATH}")
+            raise
         
-        print(f"正在连接 SQL 数据库: {DB_PATH} ...")
-        self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row 
+        try:
+            print(f"正在连接 SQL 数据库: {DB_PATH} ...")
+            # 验证数据库文件可读
+            if not os.access(DB_PATH, os.R_OK):
+                raise PermissionError(f"数据库文件不可读: {DB_PATH}")
+            self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+            self.conn.row_factory = sqlite3.Row
+            # 测试数据库连接
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' LIMIT 1")
+            cursor.fetchone()
+        except sqlite3.Error as e:
+            st.error(f"SQL 数据库连接失败: {e}\n路径: {DB_PATH}")
+            raise
+        except Exception as e:
+            st.error(f"数据库文件访问失败: {e}\n路径: {DB_PATH}")
+            raise
 
-        self.llm_client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+        try:
+            self.llm_client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+        except Exception as e:
+            st.error(f"LLM 客户端初始化失败: {e}")
+            raise
 
     def _load_index(self, collection_name: str):
         vector_store = QdrantVectorStore(client=self.client, collection_name=collection_name)
@@ -873,9 +934,22 @@ st.divider()
 @st.cache_resource
 def load_retriever():
     try:
-        return SmartTVRetriever()
+        # 显示加载进度
+        with st.spinner("正在初始化后端系统..."):
+            retriever = SmartTVRetriever()
+            st.success("✓ 后端系统加载成功")
+            return retriever
+    except FileNotFoundError as e:
+        st.error(f"❌ 文件未找到: {e}\n\n请检查：\n1. 数据文件是否已正确下载\n2. 文件路径是否正确")
+        import traceback
+        with st.expander("查看详细错误信息"):
+            st.code(traceback.format_exc())
+        return None
     except Exception as e:
         st.error(f"❌ 后端加载失败: {e}")
+        import traceback
+        with st.expander("查看详细错误信息"):
+            st.code(traceback.format_exc())
         return None
 
 retriever = load_retriever()
