@@ -15,6 +15,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from qdrant_client import QdrantClient
 from openai import OpenAI
 import urllib.request
+import urllib.error
 import zipfile
 
 def download_data_from_releases():
@@ -23,6 +24,9 @@ def download_data_from_releases():
     tag = st.secrets.get("RELEASE_TAG", "v1.0.0")
     # 使用正确的 GitHub Release URL 格式
     release_base = f"https://github.com/{repo}/releases/download/{tag}"
+    
+    # 显示调试信息
+    st.info(f"📦 从 GitHub Release 下载数据\n- 仓库: {repo}\n- 标签: {tag}\n- 基础URL: {release_base}")
     
     os.makedirs("data/database", exist_ok=True)
     os.makedirs("data/qdrant_data", exist_ok=True)
@@ -33,17 +37,24 @@ def download_data_from_releases():
         "data/qdrant_data.zip": f"{release_base}/qdrant_data.zip"
     }
     
+    download_failed = False
+    
     for local_path, url in files.items():
         # 优化判断逻辑：如果文件已存在且大小 > 1KB，跳过下载
         # 对于 zip 文件，检查解压后的目录是否存在
         if local_path.endswith('.zip'):
             if os.path.exists("data/qdrant_data") and os.path.exists("data/qdrant_data/meta.json"):
+                st.success(f"✓ {os.path.basename(local_path)} 已存在，跳过下载")
                 continue
         elif os.path.exists(local_path) and os.path.getsize(local_path) > 1024:
+            st.success(f"✓ {os.path.basename(local_path)} 已存在，跳过下载")
             continue
             
         try:
             with st.spinner(f"正在下载 {os.path.basename(local_path)}..."):
+                # 显示实际下载 URL（用于调试）
+                st.text(f"下载URL: {url}")
+                
                 # 使用自定义 Header 模拟浏览器，防止被 GitHub 拦截
                 opener = urllib.request.build_opener()
                 opener.addheaders = [('User-agent', 'Mozilla/5.0')]
@@ -53,18 +64,32 @@ def download_data_from_releases():
                 
                 # 校验：如果下载的文件太小（可能是下载到了报错页面），抛出异常
                 if os.path.getsize(local_path) < 100:
-                    with open(local_path, 'r') as f:
+                    with open(local_path, 'r', encoding='utf-8') as f:
                         content = f.read()
-                    st.error(f"下载的文件内容异常，请检查链接是否正确。内容：{content[:100]}")
+                    st.error(f"❌ 下载的文件内容异常（可能下载到了错误页面）\nURL: {url}\n内容预览: {content[:200]}")
+                    download_failed = True
+                    if os.path.exists(local_path):
+                        os.remove(local_path)
                     continue
 
                 if local_path.endswith('.zip'):
                     with zipfile.ZipFile(local_path, 'r') as zip_ref:
                         zip_ref.extractall("data/")
                     os.remove(local_path)
-            st.toast(f"✓ {os.path.basename(local_path)} 加载成功")
+                    st.success(f"✓ {os.path.basename(local_path)} 下载并解压成功")
+                else:
+                    st.success(f"✓ {os.path.basename(local_path)} 下载成功")
+        except urllib.error.HTTPError as e:
+            st.error(f"❌ 下载失败 {os.path.basename(local_path)}: HTTP {e.code} {e.reason}\nURL: {url}\n\n请检查：\n1. Release 标签是否正确（当前: {tag}）\n2. 文件名是否正确\n3. Release 是否已发布")
+            download_failed = True
         except Exception as e:
-            st.error(f"下载失败 {local_path}: {str(e)}")
+            st.error(f"❌ 下载失败 {os.path.basename(local_path)}: {str(e)}\nURL: {url}")
+            download_failed = True
+    
+    # 如果下载失败，停止应用执行
+    if download_failed:
+        st.error("⚠️ 数据文件下载失败，应用无法继续运行。请检查 GitHub Release 配置。")
+        st.stop()
 
 download_data_from_releases()
 
