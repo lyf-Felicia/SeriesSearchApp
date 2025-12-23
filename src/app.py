@@ -13,6 +13,55 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from qdrant_client import QdrantClient
 from openai import OpenAI
+import urllib.request
+import zipfile
+import streamlit as st
+
+def download_data_from_releases():
+    repo = st.secrets.get("GITHUB_REPO", "your-username/SeriesSearchApp")
+    tag = st.secrets.get("RELEASE_TAG", "v1.0.0")
+    # 注意：确保这里是正确的 URL 格式
+    release_base = f"https://github.com/lyf-Felicia/SeriesSearchApp/releases/download/1.0"
+    
+    os.makedirs("data/database", exist_ok=True)
+    os.makedirs("data/qdrant_data", exist_ok=True)
+    
+    files = {
+        "data/llm_summaries.json": f"{release_base}/llm_summaries.json",
+        "data/database/final.db": f"{release_base}/final.db",
+        "data/qdrant_data.zip": f"{release_base}/qdrant_data.zip"
+    }
+    
+    for local_path, url in files.items():
+        # 优化判断逻辑：如果文件已存在且大小 > 1KB，跳过下载
+        if os.path.exists(local_path) and os.path.getsize(local_path) > 1024:
+            continue
+            
+        try:
+            with st.spinner(f"正在下载 {os.path.basename(local_path)}..."):
+                # 使用自定义 Header 模拟浏览器，防止被 GitHub 拦截
+                opener = urllib.request.build_opener()
+                opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+                urllib.request.install_opener(opener)
+                
+                urllib.request.urlretrieve(url, local_path)
+                
+                # 校验：如果下载的文件太小（可能是下载到了报错页面），抛出异常
+                if os.path.getsize(local_path) < 100:
+                    with open(local_path, 'r') as f:
+                        content = f.read()
+                    st.error(f"下载的文件内容异常，请检查链接是否正确。内容：{content[:100]}")
+                    continue
+
+                if local_path.endswith('.zip'):
+                    with zipfile.ZipFile(local_path, 'r') as zip_ref:
+                        zip_ref.extractall("data/")
+                    os.remove(local_path)
+            st.toast(f"✓ {os.path.basename(local_path)} 加载成功")
+        except Exception as e:
+            st.error(f"下载失败 {local_path}: {str(e)}")
+
+download_data_from_releases()
 
 # ================= 🟢 配置区域 =================
 # 优先从 Streamlit secrets 读取，如果没有则使用默认值
