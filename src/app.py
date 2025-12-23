@@ -6,6 +6,7 @@ import json
 import sqlite3
 import time
 import html
+import os
 from typing import List, Dict, Any, Generator
 from llama_index.core import VectorStoreIndex, StorageContext, Settings
 from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator
@@ -15,13 +16,13 @@ from qdrant_client import QdrantClient
 from openai import OpenAI
 import urllib.request
 import zipfile
-import streamlit as st
 
 def download_data_from_releases():
-    repo = st.secrets.get("GITHUB_REPO", "your-username/SeriesSearchApp")
+    # 从 secrets 读取配置，如果没有则使用默认值
+    repo = st.secrets.get("GITHUB_REPO", "lyf-Felicia/SeriesSearchApp")
     tag = st.secrets.get("RELEASE_TAG", "v1.0.0")
-    # 注意：确保这里是正确的 URL 格式
-    release_base = f"https://github.com/lyf-Felicia/SeriesSearchApp/releases/download/1.0"
+    # 使用正确的 GitHub Release URL 格式
+    release_base = f"https://github.com/{repo}/releases/download/{tag}"
     
     os.makedirs("data/database", exist_ok=True)
     os.makedirs("data/qdrant_data", exist_ok=True)
@@ -34,7 +35,11 @@ def download_data_from_releases():
     
     for local_path, url in files.items():
         # 优化判断逻辑：如果文件已存在且大小 > 1KB，跳过下载
-        if os.path.exists(local_path) and os.path.getsize(local_path) > 1024:
+        # 对于 zip 文件，检查解压后的目录是否存在
+        if local_path.endswith('.zip'):
+            if os.path.exists("data/qdrant_data") and os.path.exists("data/qdrant_data/meta.json"):
+                continue
+        elif os.path.exists(local_path) and os.path.getsize(local_path) > 1024:
             continue
             
         try:
