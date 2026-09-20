@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/Code-MIT-0f766e.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-3776ab.svg)](https://www.python.org/)
 
-SeriesSearch is a Streamlit retrieval product for Chinese TV discovery. It combines precise year/genre/region filtering over SQLite with natural-language search over rich and basic Qdrant indexes, then uses an OpenAI-compatible LLM for intent extraction, bounded candidate reranking, and recommendation explanations.
+SeriesSearch is a Streamlit retrieval product for TV series discovery. It combines precise year/genre/region filtering over SQLite with natural-language search over rich and basic Qdrant indexes, then uses an OpenAI-compatible LLM for intent extraction, bounded candidate reranking, and recommendation explanations.
 
 ![Product insight: viewers remember stories differently from how catalogs organize them](docs/product-insight.svg)
 
