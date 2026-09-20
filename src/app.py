@@ -122,7 +122,7 @@ download_data_from_releases()
 
 # ================= 🟢 配置区域 =================
 # 优先从 Streamlit secrets 读取，如果没有则使用默认值
-LLM_API_KEY = st.secrets.get("LLM_API_KEY", "REMOVED_SECRET")
+LLM_API_KEY = st.secrets.get("LLM_API_KEY", "")
 LLM_BASE_URL = st.secrets.get("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 LLM_MODEL_NAME = st.secrets.get("LLM_MODEL_NAME", "qwen-max")
 QDRANT_PATH = st.secrets.get("QDRANT_PATH", "data/qdrant_data")
