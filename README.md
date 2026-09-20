@@ -1,14 +1,114 @@
 # SeriesSearch
 
-**Hybrid discovery for Chinese TV series, combining deterministic metadata filters with LLM-assisted semantic retrieval.**
+**Find a show from the character, scene, or feeling you remember.**
 
 [![CI](https://github.com/lyf-Felicia/SeriesSearchApp/actions/workflows/ci.yml/badge.svg)](https://github.com/lyf-Felicia/SeriesSearchApp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/Code-MIT-0f766e.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-3776ab.svg)](https://www.python.org/)
 
-SeriesSearch is a Streamlit retrieval product with two complementary experiences: precise year/genre/region filtering over SQLite, and natural-language discovery over rich and basic Qdrant indexes. The semantic path uses an OpenAI-compatible LLM for intent extraction, candidate reranking, and recommendation explanations.
+SeriesSearch is a Streamlit retrieval product for Chinese TV discovery. It combines precise year/genre/region filtering over SQLite with natural-language search over rich and basic Qdrant indexes, then uses an OpenAI-compatible LLM for intent extraction, bounded candidate reranking, and recommendation explanations.
+
+## At a Glance
+
+| | Product perspective |
+|---|---|
+| **Problem** | Catalog search works when users know metadata, but not when they only remember a character setup, emotional tone, or isolated scene |
+| **Insight** | The same title must be discoverable at multiple levels: structured metadata, overall story, character profile, and episode detail |
+| **Product bet** | Combine deterministic filters with semantic recall instead of forcing every request through one search paradigm |
+| **Design objective** | Return a small, explainable set of titles while preserving the scene or narrative clue that produced each match |
+
+## Product Thesis
+
+> People often remember a show by a character, a scene, or a feeling—not by its exact title or catalog labels.
+
+SeriesSearch treats TV discovery as an **intent-understanding problem**, not just a keyword-matching problem. A user might ask for “a modern romance where the male lead is a doctor” or “the show with a breakup in the rain.” Those memories live at different levels: metadata, character profiles, overall plots, and individual episodes. The product makes the request interpretable, searches across those levels, and returns evidence that users can recognize.
+
+| User behavior | Product decision | Why it matters |
+|---|---|---|
+| “I know the year and genre.” | Keep a direct SQLite filter path | Deterministic requests should remain fast, predictable, and independent of an LLM |
+| “I remember the protagonist was a doctor.” | Represent `PERSONA` intent and make character/occupation signals searchable | Catalog fields rarely capture the identity users actually remember |
+| “There was a breakup in the rain.” | Index episodes as child documents and surface matched snippets | A scene-level memory can be invisible in a series-level synopsis |
+| “I want something sweet but not childish.” | Retrieve broadly, then let an LLM rerank the bounded candidate set | Semantic similarity creates recall; contextual judgment improves ordering |
+| “Why does this match me?” | Generate explanations from retrieved candidates | Recommendation quality includes user trust, not only ranking |
+
+## What Makes the Design Distinctive
+
+### 1. Two search modes reflect two kinds of intent
+
+The interface does not force every request through an AI pipeline. Structured filters serve users who know their constraints; semantic search serves users who only remember narrative clues. This separation also creates a useful fallback boundary: deterministic discovery does not depend on vector retrieval or model behavior.
+
+### 2. Quality and coverage are balanced explicitly
+
+The corpus is split into a **rich index** for titles with generated plot and character representations and a **basic index** for titles that only have source summaries. Searching both avoids the common product tradeoff of either discarding sparsely described titles or lowering the quality of every document to the weakest schema.
+
+### 3. Retrieval preserves the clue that produced the match
+
+Series and episodes form a parent-child document structure. Results are deduplicated at series level, while matched episode snippets remain attached as evidence. The UI can therefore answer both “which show?” and “which remembered scene led to this result?”
+
+### 4. LLMs are used where judgment adds value
+
+The LLM does not replace the database or search index. It handles three bounded tasks: intent extraction, reranking a retrieved candidate set, and explaining the final recommendations. Exact filtering and first-stage recall remain inspectable, reducing cost and keeping the system easier to debug.
+
+In the current production path, intent classification provides interpretable query analysis; it does **not** dynamically route retrieval. Both rich and basic indexes are searched for every semantic query. Dynamic routing remains an experiment until it can be evaluated against this simpler baseline.
 
 ![SeriesSearch architecture](docs/architecture.svg)
+
+## Example User Journey
+
+```text
+“I want a sweet modern drama where the male lead is a doctor”
+	↓
+Intent: PERSONA · keywords: doctor, sweet romance
+	↓
+Rich + basic vector recall across series and episode documents
+	↓
+Merge by series_id while retaining episode evidence
+	↓
+LLM reranks a bounded candidate set
+	↓
+Ranked titles + matched scenes + conversational recommendation
+```
+
+This flow also supports refinement within the same browser session: a follow-up such as “make it more suspenseful” carries recent turns into the next retrieval and explanation request.
+
+## Product and Engineering Tradeoffs
+
+| Decision | Benefit | Current limitation / next validation |
+|---|---|---|
+| Local BGE embeddings and Qdrant | Chinese semantic retrieval without sending the corpus to an embedding API | Model download and local index increase cold-start and memory cost |
+| LLM reranking after retrieval | Applies nuanced judgment to a small candidate set | Needs an offline relevance benchmark and latency/cost measurement |
+| Session-scoped conversational context | Enables lightweight iterative discovery without accounts | Context is string-based, short-lived, and not a durable preference model |
+| Live poster lookup | Makes results recognizable without bundling image assets | Third-party availability and licensing require a production replacement |
+| Versioned Release assets | Keeps large artifacts outside Git while preserving reproducibility | First boot is multi-gigabyte; production should pre-stage assets |
+| Deliberately narrow production path | Keeps the shipped experience understandable and testable | HyDE, local reranking, and rule-based routing remain isolated experiments until evaluated |
+
+The repository intentionally avoids publishing unsupported accuracy, recall, latency, or memory claims. Establishing a labeled query set and measuring retrieval/reranking contributions is part of the roadmap.
+
+## End-to-End Product Scope
+
+SeriesSearch is designed as more than an LLM wrapper. The project connects five product layers:
+
+| Layer | Product work represented in the repository |
+|---|---|
+| Discovery | Framing how users search when they remember constraints versus narrative fragments |
+| Information architecture | Modeling titles and episodes, and separating enriched from basic content |
+| AI orchestration | Combining embedding recall, candidate fusion, LLM scoring, and grounded explanation |
+| Interaction design | Supporting two search modes, visible episode evidence, and lightweight follow-up context |
+| Product reliability | Pinning large artifacts, protecting secrets, testing trust boundaries, and documenting data rights |
+
+## Evaluation Plan
+
+The next product question is not “can an LLM generate recommendations?” but “does this design help users identify the right show with less effort?” A credible evaluation would combine:
+
+| Dimension | Proposed measure | Decision it informs |
+|---|---|---|
+| Retrieval coverage | `Recall@15` on persona, scene, and theme query sets | Whether both indexes retrieve a relevant candidate before reranking |
+| Ranking quality | `NDCG@5` / human relevance preference | Whether LLM reranking improves over vector-score ordering |
+| Evidence quality | Precision of surfaced episode snippets | Whether users can recognize why a result matched |
+| User success | Result-detail engagement, reformulation rate, and successful-session rate | Whether the interaction model reduces search effort |
+| Operational quality | p50/p95 latency, LLM parse-failure rate, fallback rate, and cost per search | Whether the experience is viable beyond a demo |
+
+The first ablation should compare basic-only retrieval, dual-index retrieval, and dual-index plus LLM reranking. This isolates whether each layer earns its additional complexity.
 
 ## Product Capabilities
 
