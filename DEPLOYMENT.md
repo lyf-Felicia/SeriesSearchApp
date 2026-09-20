@@ -1,129 +1,60 @@
-# Streamlit Cloud 部署指南
+# Deployment Guide
 
-## 📦 需要推送到 GitHub 的文件
+## Current Readiness
 
-### 必需文件（核心应用）
+The application has an executable offline test suite, secret scanning, fixed Release checksums, safe ZIP extraction, and Streamlit secret-based configuration. A full hosted startup has **not** yet been verified: it requires a live LLM credential, approximately 2.55 GB of Release downloads, extracted Qdrant storage, and the BGE embedding model.
 
-```
-SeriesSearchApp/
-├── src/
-│   └── app.py              ✅ 主应用文件（必需）
-├── requirements.txt        ✅ Python 依赖（必需）
-├── .streamlit/
-│   ├── config.toml         ✅ Streamlit 配置（必需）
-│   └── secrets.toml.example ✅ 配置模板（推荐）
-├── README.md               ✅ 项目文档（推荐）
-└── .gitignore              ✅ Git 配置（必需）
-```
+Use a host with persistent writable storage, enough cold-start time, and at least 6 GB of free disk. Confirm the provider's memory limit before deploying the BGE model and local Qdrant together. Streamlit Community Cloud may be unsuitable if its current storage or startup limits are lower than these requirements.
 
-### 可选文件（根据需要）
+## Configuration
 
-```
-SeriesSearchApp/
-├── src/
-│   ├── data_loader.py      ⚠️ 如果 app.py 需要则保留
-│   ├── query_engine.py     ⚠️ 如果 app.py 需要则保留
-│   └── index_builder.py   ⚠️ 如果需要在云端构建索引则保留
-├── scripts/                ⚠️ 辅助脚本（可选）
-└── tests/                  ⚠️ 测试文件（可选）
-```
-
-## 🚫 不推送的文件（已在 .gitignore 中）
-
-- `data/` - 数据文件（数据库、向量数据库、JSON 文件）
-- `logs/` - 日志文件
-- `venv/` - 虚拟环境
-- `.streamlit/secrets.toml` - 包含真实密钥的文件
-
-## 📝 部署步骤
-
-### 1. 初始化 Git 仓库
+Use Python 3.11 and install the pinned top-level dependencies:
 
 ```bash
-cd "/Users/lyfialiu/Desktop/个性化选修课/智能信息检索导论/SeriesSearchApp"
-git init
-git add README.md .gitignore requirements.txt .streamlit/ src/app.py
-# 如果 app.py 引用了其他模块，也要添加
-git commit -m "Initial commit for Streamlit Cloud"
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-### 2. 创建 GitHub 仓库并推送
+Configure these values in the platform's secret manager:
+
+```toml
+LLM_API_KEY = "your-provider-key"
+LLM_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+LLM_MODEL_NAME = "qwen-max"
+QDRANT_PATH = "data/qdrant_data"
+EMBEDDING_MODEL_PATH = "BAAI/bge-large-zh-v1.5"
+DB_PATH = "data/database/final.db"
+```
+
+Do not set `GITHUB_REPO` or `RELEASE_TAG`: the trusted repository, version, sizes, and SHA-256 digests are pinned in `src/release_assets.py`.
+
+## Preflight
 
 ```bash
-git remote add origin <your-github-repo-url>
-git branch -M main
-git push -u origin main
+python -W error -m compileall -q src scripts
+python -m pytest -q
 ```
 
-### 3. 在 Streamlit Cloud 配置
-
-1. 访问 https://streamlit.io/cloud
-2. 用 GitHub 账号登录
-3. 点击 "New app"
-4. 选择仓库：`SeriesSearchApp`
-5. 主文件路径：`src/app.py`
-6. 在 "Secrets" 中添加：
-   ```
-   LLM_API_KEY=your-api-key
-   LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-   LLM_MODEL_NAME=qwen-max
-   QDRANT_PATH=data/qdrant_data
-   EMBEDDING_MODEL_PATH=BAAI/bge-large-zh-v1.5
-   DB_PATH=data/database/final.db
-   ```
-
-### 4. 数据文件处理
-
-由于数据文件太大无法推送到 GitHub，有以下方案：
-
-#### 方案 A：使用 Git LFS（适合中等大小文件）
+Then start the service:
 
 ```bash
-# 安装 Git LFS
-git lfs install
-
-# 跟踪大文件
-git lfs track "data/llm_summaries.json"
-git lfs track "data/database/final.db"
-
-# 添加到仓库
-git add .gitattributes
-git add data/llm_summaries.json data/database/final.db
+streamlit run src/app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-#### 方案 B：云存储下载（推荐）
+On first boot, monitor disk use and allow time for verified Release downloads and model initialization. A production platform should persist both `data/` and the Hugging Face model cache between restarts.
 
-修改 `src/app.py`，在应用启动时从云存储下载数据：
+## Release Checklist
 
-```python
-import os
-import urllib.request
+- CI compile, pytest, and Gitleaks jobs pass.
+- `LLM_API_KEY` is stored only in the deployment secret manager.
+- Release assets match the manifest in `src/release_assets.py`.
+- The host has sufficient disk, memory, egress, and cold-start allowance.
+- LLM provider retention and regional-processing terms are acceptable.
+- Third-party data and image rights have been reviewed under `DATA_POLICY.md`.
+- A real semantic query, structured filter, restart, and corrupted-download recovery have been tested in the target environment.
 
-def download_data_if_needed():
-    """如果数据文件不存在，从云存储下载"""
-    data_files = {
-        "data/llm_summaries.json": "https://your-storage.com/llm_summaries.json",
-        "data/database/final.db": "https://your-storage.com/final.db",
-    }
-    
-    for local_path, url in data_files.items():
-        if not os.path.exists(local_path):
-            print(f"下载 {local_path}...")
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            urllib.request.urlretrieve(url, local_path)
-```
+## Updating Data Assets
 
-#### 方案 C：在 Streamlit Cloud 上构建索引
-
-如果数据文件太大，可以在应用首次启动时提示用户等待索引构建。
-
-## ✅ 检查清单
-
-- [ ] `src/app.py` 已更新为使用 `st.secrets`
-- [ ] `requirements.txt` 包含所有依赖
-- [ ] `.streamlit/config.toml` 已配置
-- [ ] `.gitignore` 已正确配置
-- [ ] 数据文件处理方案已确定
-- [ ] GitHub 仓库已创建并推送
-- [ ] Streamlit Cloud Secrets 已配置
-
+Publish new assets under a new immutable Release tag. Update every corresponding `size` and `sha256` value in `src/release_assets.py`, run the offline test suite, and deploy the code change together with the Release. Never replace files under an existing tag without updating the manifest.

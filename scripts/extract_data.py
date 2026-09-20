@@ -91,7 +91,7 @@ def parse_drama_page(html_content: str, url: Optional[str] = None) -> Dict:
         提取字段值
         
         Args:
-            label_pattern: 标签文本的正则表达式模式（如'导\s*演'，允许中间有空格）
+            label_pattern: 标签文本的正则表达式模式（如'导\\s*演'，允许中间有空格）
         
         Returns:
             str: 提取的字段值

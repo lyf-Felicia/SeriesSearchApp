@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">SeriesSearch product architecture</title>
+  <desc id="desc">Online SQL filtering and LLM-assisted semantic retrieval backed by verified release assets.</desc>
+  <defs>
+    <linearGradient id="header" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#0f4c5c"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#12343b" flood-opacity=".12"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#3f5963"/>
+    </marker>
+    <style>
+      .title { font: 700 34px 'DejaVu Sans', sans-serif; fill: #fff; }
+      .subtitle { font: 400 16px 'DejaVu Sans', sans-serif; fill: #d8f3ef; }
+      .lane { font: 700 15px 'DejaVu Sans', sans-serif; fill: #0f4c5c; letter-spacing: 1px; }
+      .box-title { font: 700 18px 'DejaVu Sans', sans-serif; fill: #17343d; }
+      .box-copy { font: 400 14px 'DejaVu Sans', sans-serif; fill: #526871; }
+      .small { font: 400 12px 'DejaVu Sans', sans-serif; fill: #60757d; }
+      .line { stroke: #3f5963; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #6e8790; stroke-width: 2; stroke-dasharray: 8 7; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1440" height="900" fill="#f4f8f7"/>
+  <rect width="1440" height="132" fill="url(#header)"/>
+  <text x="72" y="62" class="title">SeriesSearch</text>
+  <text x="72" y="94" class="subtitle">Hybrid discovery for Chinese TV series: deterministic filters + LLM-assisted semantic retrieval</text>
+
+  <text x="72" y="180" class="lane">ONLINE REQUEST PATH</text>
+  <rect x="60" y="202" width="1320" height="405" rx="8" fill="#fff" stroke="#d7e3e1"/>
+
+  <g filter="url(#shadow)">
+    <rect x="92" y="250" width="170" height="100" rx="7" fill="#e6f4f1" stroke="#8bc5b9"/>
+    <text x="177" y="286" text-anchor="middle" class="box-title">Streamlit UI</text>
+    <text x="177" y="314" text-anchor="middle" class="box-copy">filters · natural language</text>
+    <text x="177" y="336" text-anchor="middle" class="box-copy">session context</text>
+
+    <rect x="330" y="224" width="190" height="112" rx="7" fill="#fff4d6" stroke="#e5bd58"/>
+    <text x="425" y="261" text-anchor="middle" class="box-title">Filter search</text>
+    <text x="425" y="289" text-anchor="middle" class="box-copy">parameterized SQL</text>
+    <text x="425" y="312" text-anchor="middle" class="box-copy">year · genre · region</text>
+
+    <rect x="330" y="412" width="190" height="112" rx="7" fill="#e8eff8" stroke="#8caed5"/>
+    <text x="425" y="449" text-anchor="middle" class="box-title">Intent extraction</text>
+    <text x="425" y="477" text-anchor="middle" class="box-copy">PERSONA · SCENE · THEME</text>
+    <text x="425" y="500" text-anchor="middle" class="box-copy">keywords + occupations</text>
+
+    <rect x="590" y="382" width="190" height="80" rx="7" fill="#edf3fa" stroke="#8caed5"/>
+    <text x="685" y="415" text-anchor="middle" class="box-title">Rich index</text>
+    <text x="685" y="441" text-anchor="middle" class="box-copy">LLM summaries + episodes</text>
+
+    <rect x="590" y="486" width="190" height="80" rx="7" fill="#edf3fa" stroke="#8caed5"/>
+    <text x="685" y="519" text-anchor="middle" class="box-title">Basic index</text>
+    <text x="685" y="545" text-anchor="middle" class="box-copy">source summaries</text>
+
+    <rect x="850" y="412" width="180" height="112" rx="7" fill="#f7ece6" stroke="#d9a88c"/>
+    <text x="940" y="449" text-anchor="middle" class="box-title">Candidate merge</text>
+    <text x="940" y="477" text-anchor="middle" class="box-copy">series_id deduplication</text>
+    <text x="940" y="500" text-anchor="middle" class="box-copy">episode evidence</text>
+
+    <rect x="1098" y="412" width="180" height="112" rx="7" fill="#f7ece6" stroke="#d9a88c"/>
+    <text x="1188" y="449" text-anchor="middle" class="box-title">LLM rerank</text>
+    <text x="1188" y="477" text-anchor="middle" class="box-copy">candidate scoring</text>
+    <text x="1188" y="500" text-anchor="middle" class="box-copy">recommendation rationale</text>
+
+    <rect x="1100" y="238" width="176" height="82" rx="7" fill="#e6f4f1" stroke="#8bc5b9"/>
+    <text x="1188" y="271" text-anchor="middle" class="box-title">Results</text>
+    <text x="1188" y="297" text-anchor="middle" class="box-copy">ranked, explainable</text>
+  </g>
+
+  <path class="line" d="M262 278 H330"/>
+  <path class="line" d="M520 280 H1070 Q1090 280 1098 280"/>
+  <path class="line" d="M262 322 C295 322 295 468 330 468"/>
+  <path class="line" d="M520 450 C548 450 554 422 590 422"/>
+  <path class="line" d="M520 486 C548 486 554 526 590 526"/>
+  <path class="line" d="M780 422 C815 422 815 450 850 450"/>
+  <path class="line" d="M780 526 C815 526 815 486 850 486"/>
+  <path class="line" d="M1030 468 H1098"/>
+  <path class="line" d="M1188 412 V320"/>
+
+  <text x="72" y="656" class="lane">TRUSTED DATA SUPPLY</text>
+  <rect x="60" y="678" width="1320" height="164" rx="8" fill="#eaf1ef" stroke="#cadbd7"/>
+  <g filter="url(#shadow)">
+    <rect x="92" y="710" width="218" height="94" rx="7" fill="#fff" stroke="#a9c2bc"/>
+    <text x="201" y="746" text-anchor="middle" class="box-title">Offline preparation</text>
+    <text x="201" y="774" text-anchor="middle" class="box-copy">SQLite + summaries + BGE</text>
+
+    <rect x="390" y="710" width="240" height="94" rx="7" fill="#fff" stroke="#a9c2bc"/>
+    <text x="510" y="746" text-anchor="middle" class="box-title">GitHub Release v1.0</text>
+    <text x="510" y="774" text-anchor="middle" class="box-copy">versioned application assets</text>
+
+    <rect x="710" y="710" width="250" height="94" rx="7" fill="#fff4d6" stroke="#e5bd58"/>
+    <text x="835" y="746" text-anchor="middle" class="box-title">Integrity boundary</text>
+    <text x="835" y="773" text-anchor="middle" class="box-copy">HTTPS · size · SHA-256</text>
+    <text x="835" y="793" text-anchor="middle" class="small">safe ZIP paths · atomic replace</text>
+
+    <rect x="1040" y="710" width="240" height="94" rx="7" fill="#fff" stroke="#a9c2bc"/>
+    <text x="1160" y="746" text-anchor="middle" class="box-title">Runtime stores</text>
+    <text x="1160" y="774" text-anchor="middle" class="box-copy">SQLite + local Qdrant</text>
+  </g>
+  <path class="dash" d="M310 757 H390"/>
+  <path class="dash" d="M630 757 H710"/>
+  <path class="dash" d="M960 757 H1040"/>
+  <path class="dash" d="M1160 710 V600"/>
+</svg>

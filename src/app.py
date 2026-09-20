@@ -5,8 +5,8 @@ import random
 import json
 import sqlite3
 import time
-import html
 import os
+from pathlib import Path
 from typing import List, Dict, Any, Generator
 from llama_index.core import VectorStoreIndex, StorageContext, Settings
 from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator
@@ -14,114 +14,13 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from qdrant_client import QdrantClient
 from openai import OpenAI
-import urllib.request
-import urllib.error
-import zipfile
-
-def download_data_from_releases():
-    # 从 secrets 读取配置，如果没有则使用默认值
-    repo = st.secrets.get("GITHUB_REPO", "lyf-Felicia/SeriesSearchApp")
-    tag = st.secrets.get("RELEASE_TAG", "1.0")
-    # 使用正确的 GitHub Release URL 格式
-    release_base = f"https://github.com/{repo}/releases/download/{tag}"
-    
-    # 显示调试信息
-    st.info(f"📦 从 GitHub Release 下载数据\n- 仓库: {repo}\n- 标签: {tag}\n- 基础URL: {release_base}")
-    
-    os.makedirs("data/database", exist_ok=True)
-    os.makedirs("data/qdrant_data", exist_ok=True)
-    
-    files = {
-        "data/llm_summaries.json": f"{release_base}/llm_summaries.json",
-        "data/database/final.db": f"{release_base}/final.db",
-        "data/qdrant_data.zip": f"{release_base}/qdrant_data.zip"
-    }
-    
-    download_failed = False
-    
-    for local_path, url in files.items():
-        # 优化判断逻辑：如果文件已存在且大小 > 1KB，跳过下载
-        # 对于 zip 文件，检查解压后的目录是否存在
-        if local_path.endswith('.zip'):
-            if os.path.exists("data/qdrant_data") and os.path.exists("data/qdrant_data/meta.json"):
-                st.success(f"✓ {os.path.basename(local_path)} 已存在，跳过下载")
-                continue
-        elif os.path.exists(local_path) and os.path.getsize(local_path) > 1024:
-            st.success(f"✓ {os.path.basename(local_path)} 已存在，跳过下载")
-            continue
-            
-        try:
-            with st.spinner(f"正在下载 {os.path.basename(local_path)}..."):
-                # 显示实际下载 URL（用于调试）
-                st.text(f"下载URL: {url}")
-                
-                # 使用自定义 Header 模拟浏览器，防止被 GitHub 拦截
-                opener = urllib.request.build_opener()
-                opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-                urllib.request.install_opener(opener)
-                
-                urllib.request.urlretrieve(url, local_path)
-                
-                # 校验：如果下载的文件太小（可能是下载到了报错页面），抛出异常
-                if os.path.getsize(local_path) < 100:
-                    with open(local_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    st.error(f"❌ 下载的文件内容异常（可能下载到了错误页面）\nURL: {url}\n内容预览: {content[:200]}")
-                    download_failed = True
-                    if os.path.exists(local_path):
-                        os.remove(local_path)
-                    continue
-
-                if local_path.endswith('.zip'):
-                    with zipfile.ZipFile(local_path, 'r') as zip_ref:
-                        zip_ref.extractall("data/")
-                    os.remove(local_path)
-                    st.success(f"✓ {os.path.basename(local_path)} 下载并解压成功")
-                else:
-                    st.success(f"✓ {os.path.basename(local_path)} 下载成功")
-        except urllib.error.HTTPError as e:
-            st.error(f"❌ 下载失败 {os.path.basename(local_path)}: HTTP {e.code} {e.reason}\nURL: {url}\n\n请检查：\n1. Release 标签是否正确（当前: {tag}）\n2. 文件名是否正确\n3. Release 是否已发布")
-            download_failed = True
-        except Exception as e:
-            st.error(f"❌ 下载失败 {os.path.basename(local_path)}: {str(e)}\nURL: {url}")
-            download_failed = True
-    
-    # 如果下载失败，停止应用执行
-    if download_failed:
-        st.error("⚠️ 数据文件下载失败，应用无法继续运行。请检查 GitHub Release 配置。")
-        st.stop()
-    
-    # 验证所有必需的文件是否存在且可读
-    required_files = {
-        "数据库文件": "data/database/final.db",
-        "LLM摘要文件": "data/llm_summaries.json",
-        "Qdrant数据目录": "data/qdrant_data"
-    }
-    
-    missing_files = []
-    for name, path in required_files.items():
-        if os.path.isdir(path):
-            # 对于目录，检查是否有内容
-            if not os.listdir(path):
-                missing_files.append(f"{name} ({path}) - 目录为空")
-            elif path == "data/qdrant_data" and not os.path.exists(os.path.join(path, "meta.json")):
-                missing_files.append(f"{name} ({path}) - 缺少 meta.json 文件")
-        elif not os.path.exists(path):
-            missing_files.append(f"{name} ({path}) - 文件不存在")
-        elif os.path.getsize(path) < 100:
-            missing_files.append(f"{name} ({path}) - 文件大小异常（可能损坏）")
-    
-    if missing_files:
-        st.error("⚠️ 数据文件验证失败：\n" + "\n".join(f"- {f}" for f in missing_files))
-        st.stop()
-    
-    # 等待一小段时间确保文件系统完全同步
-    time.sleep(0.5)
-
-download_data_from_releases()
+from filter_search import search_series
+from release_assets import AssetValidationError, ensure_release_assets
+from text_safety import clean_html_tags
 
 # ================= 🟢 配置区域 =================
-# 优先从 Streamlit secrets 读取，如果没有则使用默认值
+st.set_page_config(page_title="智能电视剧搜索引擎", page_icon="📺", layout="wide")
+
 LLM_API_KEY = st.secrets.get("LLM_API_KEY", "")
 LLM_BASE_URL = st.secrets.get("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 LLM_MODEL_NAME = st.secrets.get("LLM_MODEL_NAME", "qwen-max")
@@ -129,18 +28,19 @@ QDRANT_PATH = st.secrets.get("QDRANT_PATH", "data/qdrant_data")
 EMBEDDING_MODEL_PATH = st.secrets.get("EMBEDDING_MODEL_PATH", "BAAI/bge-large-zh-v1.5")
 DB_PATH = st.secrets.get("DB_PATH", "data/database/final.db")
 
-# ==============================================================================
-# 1. 辅助函数：清理文本中的HTML标签
-# ==============================================================================
-def clean_html_tags(text):
-    """清理文本中的所有HTML标签，只保留纯文本"""
-    if not text:
-        return ""
-    # 移除所有HTML标签
-    text = re.sub(r'<[^>]+>', '', str(text))
-    # 转义剩余的HTML特殊字符
-    text = html.escape(text)
-    return text
+if not LLM_API_KEY:
+    st.error("缺少 LLM_API_KEY。请在 Streamlit Secrets 中配置后重启应用。")
+    st.stop()
+
+try:
+    with st.spinner("正在验证产品数据资产..."):
+        ensure_release_assets(Path("data"))
+except AssetValidationError as error:
+    st.error(f"数据资产完整性验证失败：{error}")
+    st.stop()
+except Exception as error:
+    st.error(f"数据资产准备失败：{error}")
+    st.stop()
 
 def _render_turn_content(turn):
     """渲染单轮对话的内容（用户查询、AI推荐、剧集列表）"""
@@ -189,8 +89,8 @@ def _render_turn_content(turn):
                     region = r.get('region', '未知')
                     
                     # 基本信息（始终显示）
-                    st.markdown(f"### 《{title}》 <span style='color:grey;font-size:0.8em'>匹配度:{score:.2f}</span>", unsafe_allow_html=True)
-                    st.markdown(f"<span style='color:#64748b;font-size:0.9em'>{year} · {genre} · {region}</span>", unsafe_allow_html=True)
+                    st.subheader(f"《{title}》")
+                    st.caption(f"{year} · {genre} · {region} · 匹配度 {score:.2f}")
                     
                     # 详细信息（可展开）
                     with st.expander("查看详情", expanded=False):
@@ -335,68 +235,8 @@ class SmartTVRetriever:
 
     def filter_search(self, years: List[str] = None, genres: List[str] = None, 
                      regions: List[str] = None, limit: int = 10) -> List[Dict]:
-        """修改为支持多选的筛选函数"""
-        cursor = self.conn.cursor()
-        sql = "SELECT * FROM series WHERE 1=1"
-        params = []
-        
-        # 年份多选处理
-        if years and len(years) > 0:
-            year_conditions = []
-            for year in years:
-                if year == "更早":
-                    year_conditions.append("CAST(year AS INTEGER) < 2018")
-                else:
-                    year_conditions.append("year = ?")
-                    params.append(year)
-            if year_conditions:
-                sql += f" AND ({' OR '.join(year_conditions)})"
-        
-        # 地区多选处理 - 处理"中国大陆"和"大陆"的映射
-        if regions and len(regions) > 0:
-            region_conditions_list = []
-            for r in regions:
-                if r == "中国大陆":
-                    # "中国大陆"同时匹配"中国大陆"和"大陆"
-                    region_conditions_list.append("(region LIKE ? OR region LIKE ?)")
-                    params.append("%中国大陆%")
-                    params.append("%大陆%")
-                else:
-                    region_conditions_list.append("region LIKE ?")
-                    params.append(f"%{r}%")
-            
-            if region_conditions_list:
-                region_conditions = " OR ".join(region_conditions_list)
-                sql += f" AND ({region_conditions})"
-        
-        # 类型多选处理
-        if genres and len(genres) > 0:
-            genre_conditions = " OR ".join(["genre LIKE ?" for _ in genres])
-            sql += f" AND ({genre_conditions})"
-            params.extend([f"%{g}%" for g in genres])
-            
-        sql += " LIMIT ?"
-        params.append(limit)
-        
         try:
-            cursor.execute(sql, params)
-            rows = cursor.fetchall()
-            
-            results = []
-            for row in rows:
-                res_dict = {
-                    "series_id": row['id'],
-                    "title": row['title'],
-                    "year": row['year'],
-                    "genre": row['genre'],
-                    "region": row['region'],
-                    "source_type": "SQL",
-                    "score": 1.0,
-                    "actors": row['cast'] if 'cast' in row.keys() else "暂无演员信息",
-                    "description": row['summary'] if 'summary' in row.keys() else "暂无剧情简介"
-                }
-                results.append(res_dict)
-            return results
+            return search_series(self.conn, years, genres, regions, limit)
         except sqlite3.Error as e:
             print(f"SQL Error: {e}")
             return []
@@ -616,11 +456,6 @@ class SmartTVRetriever:
 
         except Exception as e:
             yield f"推荐生成出错: {e}"
-
-# ==============================================================================
-# 3. Streamlit 前端（修改版：支持多选）
-# ==============================================================================
-st.set_page_config(page_title="智能电视剧搜索引擎", page_icon="📺", layout="wide")
 
 st.markdown("""
 <style>
